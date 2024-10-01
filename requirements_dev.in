@@ -1,0 +1,10 @@
+# Requirements for ref_server
+faker
+litestar
+uvicorn
+
+# Mock of s3
+moto
+
+# Testing
+pytest
