@@ -1,8 +1,8 @@
 run_fake_api_server:
-	python src/ref_server/ref_server.py
+	python ref_server/ref_server.py
 
 run_app:
-	python src/bus_server/app.py
+	python bus_server/app.py
 
 rebuild_packages:
 	pip-compile requirements_dev.in
@@ -15,3 +15,9 @@ up:
 
 down:
 	docker-compose down
+
+build:
+	docker-compose build
+
+test:
+	pytest -vv tests

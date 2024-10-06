@@ -8,3 +8,7 @@ pandas
 pydantic_settings
 pydantic
 isodate
+uvicorn
+mypy-boto3-s3
+pyarrow
+

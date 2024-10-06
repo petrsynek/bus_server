@@ -16,11 +16,38 @@ We want to create an application to process data from an external HTTP server on
 
 ## Additional notes:
 - [x] Use a git repository hosted on GitHub (please add me there as a collaborator https://github.com/H00N24)
-- Use mocked S3 using Moto (https://github.com/getmoto/moto)
-- Apply modern best practices for Python
-- Add simple CI for verifying these practices and tests
-- Simple docker file for deployment
+- [x] Use mocked S3 using Moto (https://github.com/getmoto/moto) - used in tests
+- [x] Apply modern best practices for Python ???
+- [x] Add simple CI for verifying these practices and tests
+- [x] Simple docker file for deployment
 
 ## Ref server API:
 
 as in ref_server.py
+
+# Solution
+
+## Architecture
+
+The application is divided into two main components: the API and the data processing.
+
+The API is implemented using litestar. Swagger is used for API documentation.
+
+It can be set up to run local storage or with a mocked S3 bucket.
+
+The data processing is implemented using pandas. It reads the data from the S3 bucket, processes it, and returns the statistics.
+
+The project is covered with tests using pytest.
+
+Project contains Dockerfile and can be run with docker-compose.
+
+**Check makefile for more commands.**
+
+## Possible improvements
+
+- [ ] Use some more robust queue system for processing tasks (Celery, Redis...)
+- [ ] Add integration tests (partially done - could be run by docker-compose)
+- [ ] Make the RootModel work to display the swagger documentation correctly
+
+
+

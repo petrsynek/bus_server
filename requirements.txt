@@ -32,6 +32,7 @@ click==8.1.7
     # via
     #   litestar
     #   rich-click
+    #   uvicorn
 faker==30.1.0
     # via polyfactory
 frozenlist==1.4.1
@@ -39,7 +40,9 @@ frozenlist==1.4.1
     #   aiohttp
     #   aiosignal
 h11==0.14.0
-    # via httpcore
+    # via
+    #   httpcore
+    #   uvicorn
 httpcore==1.0.6
     # via httpx
 httpx==0.27.2
@@ -68,12 +71,18 @@ multidict==6.1.0
     #   aiohttp
     #   litestar
     #   yarl
+mypy-boto3-s3==1.35.32
+    # via -r requirements.in
 numpy==2.1.2
-    # via pandas
+    # via
+    #   pandas
+    #   pyarrow
 pandas==2.2.3
     # via -r requirements.in
 polyfactory==2.17.0
     # via litestar
+pyarrow==17.0.0
+    # via -r requirements.in
 pydantic==2.9.2
     # via
     #   -r requirements.in
@@ -115,6 +124,7 @@ typing-extensions==4.12.2
     # via
     #   faker
     #   litestar
+    #   mypy-boto3-s3
     #   polyfactory
     #   pydantic
     #   pydantic-core
@@ -123,5 +133,7 @@ tzdata==2024.2
     # via pandas
 urllib3==2.2.3
     # via botocore
+uvicorn==0.31.0
+    # via -r requirements.in
 yarl==1.13.1
     # via aiohttp

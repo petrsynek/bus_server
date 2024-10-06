@@ -1,22 +1,12 @@
 repos:
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.0.262
+    rev: "v0.1.11"
     hooks:
       - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
 
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
-
-  # mirrors-mypy is unusable because it isolates mypy in its own virtualenv, without the dependencies of the repository under test.
-  # The author rabidly refuses to consider that as a problem.
-  # https://github.com/pre-commit/mirrors-mypy/issues/77 + many similar issues, all closed
-  - repo: local
-    hooks:
-      - id: mypy
-        name: mypy
-        entry: mypy
-        require_serial: true # https://stackoverflow.com/questions/73485677/pre-commit-mypy-local-hook-reports-the-same-error-multiple-times/75003826
-        language: system
-        types: [python]
+  -   repo: https://github.com/pre-commit/mirrors-mypy
+      rev: "v1.11.1"
+      hooks:
+      -   id: mypy

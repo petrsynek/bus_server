@@ -11,9 +11,8 @@ from typing import Any
 import aiohttp
 import pandas as pd
 from isodate import parse_duration  # type: ignore[import-untyped]
+from modules.config import CONFIG
 from mypy_boto3_s3 import S3Client
-
-from bus_server.config import CONFIG
 
 
 def iso_duration_to_seconds(duration_str):
@@ -33,7 +32,7 @@ async def gather_city_data(
     requested_date: date, city_id: int, city: str
 ) -> pd.DataFrame:
     """
-    Fetches data from the reference server and saves it to S3
+    Fetches data from the reference server and returns it as a DataFrame.
     """
 
     logging.info(f"Processing data for {city}:{city_id}:{requested_date}")
@@ -80,6 +79,9 @@ async def process_data_task_local(
 async def process_data_task_s3(
     requested_date: date, city_id: int, city: str, country: str, client: S3Client
 ) -> None:
+    if not client:
+        raise ValueError("S3 client is not initialized")
+
     city_df = await gather_city_data(requested_date, city_id, city)
 
     buffer = BytesIO()
@@ -132,9 +134,11 @@ def get_country_stats_s3(
     List the data stored in S3 for given date create statistics for given country
     and date
     """
+    if not client:
+        raise ValueError("S3 client is not initialized")
 
     contents = client.list_objects_v2(
-        Bucket=CONFIG.S3_BUCKET, Prefix=f"{country}/{date}"
+        Bucket=CONFIG.S3_BUCKET, Prefix=f"{country}/{requested_date}"
     ).get("Contents", [])
     files = [obj["Key"] for obj in contents]
 

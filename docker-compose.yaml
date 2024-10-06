@@ -2,18 +2,18 @@ version: "3.9"
 services:
   ref_server:
     build:
-      dockerfile: src/ref_server/Dockerfile
+      dockerfile: ref_server/Dockerfile
       context: .
     ports:
       - "8080:8080"
   bus_server:
     build:
-      dockerfile: src/bus_server/Dockerfile
+      dockerfile: bus_server/Dockerfile
       context: .
     ports:
       - "8000:8000"
     volumes:
-      - local:/app/local
+      - ./local_storage:/app/local_storage
     depends_on:
       - ref_server
     environment:

@@ -14,4 +14,7 @@ venv.bak/
 .pytest_cache
 .ruff_cache
 
-local/
+#Misc
+.vscode
+
+local_storage/

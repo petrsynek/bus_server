@@ -1,32 +1,47 @@
-import logging
 import urllib.parse
 from datetime import date, timedelta
 from functools import partial
+from typing import Dict
 
 import aiohttp
-import boto3
 import pydantic
-from litestar import Litestar, Response, get, post
+from litestar import Response, get, post
 from litestar.background_tasks import BackgroundTask, BackgroundTasks
 from litestar.params import Parameter
-from mypy_boto3_s3 import S3Client
-
-from bus_server.config import CONFIG
-from bus_server.data_processing import (get_country_stats_local,
-                                        get_country_stats_s3,
-                                        process_data_task_local,
-                                        process_data_task_s3)
-
-### API endpoints
+from modules.config import CONFIG, S3_CLIENT
+from modules.data_processing import (
+    get_country_stats_local,
+    get_country_stats_s3,
+    process_data_task_local,
+    process_data_task_s3,
+)
 
 
-@post("/process-request")
+@post(
+    "/process-request",
+    description="""
+    Fetches the list of cities from the reference server and registers tasks to process
+    data for each city
+
+    Args:
+        requested_date (date): The date for which data should be processed
+
+    Returns:
+        Response[dict[str, date]]: A response containing the requested date
+    """,
+)
 async def process_request(
-    requested_date: date = Parameter(query="date"),
+    requested_date: date = Parameter(query="date", description="The date to process"),
 ) -> Response[dict[str, date]]:
     """
     Fetches the list of cities from the reference server and registers tasks to process
     data for each city
+
+    Args:
+        requested_date (date): The date for which data should be processed
+
+    Returns:
+        Response[dict[str, date]]: A response containing the requested date
     """
 
     async with aiohttp.ClientSession() as session:
@@ -37,8 +52,8 @@ async def process_request(
 
     processing_function = (
         partial(process_data_task_local, local_path=CONFIG.LOCAL_STORAGE_PATH)
-        if CONFIG.RUN_LOCALLY else 
-        partial(process_data_task_s3, client=app.state.s3_client)
+        if CONFIG.RUN_LOCALLY
+        else partial(process_data_task_s3, client=S3_CLIENT)
     )
 
     return Response(
@@ -69,28 +84,38 @@ class TrafficStats(pydantic.BaseModel):
     average_delay: float = pydantic.Field(..., description="Average delay in seconds")
 
 
-class DateStats(pydantic.RootModel):
-    root: dict[str, TrafficStats] = pydantic.Field(
-        ..., description="Date to stats mapping"
-    )
+DateStats = pydantic.RootModel[Dict[date, TrafficStats]]
+
+CountryStats = pydantic.RootModel[Dict[str, DateStats]]  # type: ignore[valid-type]
 
 
-class CountryStats(pydantic.RootModel):
-    root: dict[str, DateStats] = pydantic.Field(
-        ..., description="Country to date stats mapping"
-    )
+@get(
+    "/country-stats",
+    response_model=CountryStats,
+    description="""
+    List the data stored in S3 for given dates create statistics for each country
 
+    Args:
+        from_date (date): The start date
+        to_date (date): The end date
 
-@get("/country-stats", response_model=CountryStats)
+    Returns:
+        CountryStats: A dictionary containing the statistics for each country for each date
+    """,
+)  # type: ignore[valid-type]
 async def country_stats(
-    from_date: date = Parameter(query="from"),
-    to_date: date = Parameter(query="to"),
-    # ) -> dict[str, dict[str, Any]]:
-) -> CountryStats:
-    # FIXME: This should be `CountryStats` instead of `dict[str, dict[str, Any]]`
-    # but swagger raises an error
+    from_date: date = Parameter(query="from", description="The start date"),
+    to_date: date = Parameter(query="to", description="The end date"),
+) -> CountryStats:  # type: ignore[valid-type]
     """
-    List the data stored in S3 for given date create statistics for each country
+    List the data stored in S3 for given dates create statistics for each country
+
+    Args:
+        from_date (date): The start date
+        to_date (date): The end date
+
+    Returns:
+        CountryStats: A dictionary containing the statistics for each country for each date
     """
 
     if CONFIG.RUN_LOCALLY:
@@ -99,10 +124,8 @@ async def country_stats(
         )
         countries = [d.name for d in CONFIG.LOCAL_STORAGE_PATH.iterdir() if d.is_dir()]
     else:
-        processing_function = partial(get_country_stats_s3, client=app.state.s3_client)
-        response = app.state.s3_client.list_objects_v2(
-            Bucket=CONFIG.S3_BUCKET, Delimiter="/"
-        )
+        processing_function = partial(get_country_stats_s3, client=S3_CLIENT)
+        response = S3_CLIENT.list_objects_v2(Bucket=CONFIG.S3_BUCKET, Delimiter="/")
         countries = [
             prefix["Prefix"].strip("/") for prefix in response.get("CommonPrefixes", [])
         ]
@@ -122,20 +145,3 @@ async def country_stats(
                 response[country][str(requested_date)] = country_stats
 
     return response
-
-
-app = Litestar([process_request, country_stats])
-
-if __name__ == "__main__":
-
-
-    import uvicorn
-
-    logging.info(f"Starting the reference server {CONFIG}")
-
-    if not CONFIG.RUN_LOCALLY:
-        # Initialize S3 client
-        s3_client: S3Client = boto3.client("s3", region_name="us-east-1")
-        app.state.s3_client = s3_client
-
-    uvicorn.run(app, host="0.0.0.0", port=8000)
