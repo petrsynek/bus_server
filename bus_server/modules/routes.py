@@ -68,7 +68,8 @@ async def process_request(
                     city["country"],
                 )
                 for city in cities
-            ]
+            ],
+            run_in_task_group=True,
         ),
     )
 
