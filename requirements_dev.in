@@ -1,10 +1,14 @@
 # Requirements for ref_server
 faker
-litestar
-uvicorn
 
 # Mock of s3
 moto
 
 # Testing
 pytest
+
+# Devel
+mypy
+types-requests
+pandas-stubs
+boto3-stubs

@@ -1,0 +1,10 @@
+
+# Runtime requirements
+
+litestar
+aiohttp
+boto3
+pandas
+pydantic_settings
+pydantic
+isodate

@@ -15,9 +15,9 @@ from datetime import datetime, timedelta
 from random import choice, randint, random
 from typing import Any
 
+import uvicorn
 from faker import Faker
 from litestar import Litestar, get
-import uvicorn
 
 faker = Faker()
 
@@ -49,4 +49,4 @@ async def get_city_stats(city_id: int, date: datetime) -> list[dict[str, Any]]:
 app = Litestar([get_cities, get_city_stats])
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8080)

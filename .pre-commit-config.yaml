@@ -1,0 +1,28 @@
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.3.0
+    hooks:
+      - name: black
+        id: black-jupyter
+
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.262
+    hooks:
+      - id: ruff
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
+    hooks:
+      - id: isort
+
+  # mirrors-mypy is unusable because it isolates mypy in its own virtualenv, without the dependencies of the repository under test.
+  # The author rabidly refuses to consider that as a problem.
+  # https://github.com/pre-commit/mirrors-mypy/issues/77 + many similar issues, all closed
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy
+        entry: mypy
+        require_serial: true # https://stackoverflow.com/questions/73485677/pre-commit-mypy-local-hook-reports-the-same-error-multiple-times/75003826
+        language: system
+        types: [python]
