@@ -1,142 +1,21 @@
 import logging
 import urllib.parse
-from datetime import date, datetime, timedelta
-from io import BytesIO
-from pathlib import Path
-from typing import Any
+from datetime import date, timedelta
+from functools import partial
 
 import aiohttp
 import boto3
-import pandas as pd
 import pydantic
-from isodate import parse_duration  # type: ignore[import-untyped]
 from litestar import Litestar, Response, get, post
 from litestar.background_tasks import BackgroundTask, BackgroundTasks
 from litestar.params import Parameter
-from pydantic_settings import BaseSettings
+from mypy_boto3_s3 import S3Client
 
-
-class AppConfig(BaseSettings):
-    S3_BUCKET: str = "your-s3-bucket-name"
-    REF_SERVER_URL: pydantic.HttpUrl = pydantic.HttpUrl("http://localhost:8080")
-    DEBUG: bool = True
-    DEBUG_S3_LOCAL_PATH: Path = Path.cwd() / "local"
-
-    class Config:
-        env_prefix = "BUS_APP_"
-        env_file = ".env"
-
-
-CONFIG = AppConfig()
-
-# Initialize S3 client
-s3_client = boto3.client("s3", region_name="us-east-1")
-
-### Data processing functions
-
-
-def iso_duration_to_seconds(duration_str):
-    """
-    Convert ISO 8601 duration string to seconds.
-    If the input is not a string or is an empty string, return the input as is.
-    """
-    if not isinstance(duration_str, str) or duration_str == "":
-        return duration_str
-    try:
-        return int(parse_duration(duration_str).total_seconds())
-    except Exception:
-        return duration_str  # Return original value if parsing fails
-
-
-async def process_data_task(
-    requested_date: date, city_id: int, city: str, country: str
-) -> None:
-    """
-    Fetches data from the reference server and saves it to S3
-    """
-
-    logging.info(f"Processing data for {city}:{city_id}:{requested_date}")
-
-    async with aiohttp.ClientSession() as session:
-        dt_date = datetime.combine(requested_date, datetime.min.time())
-        async with session.get(
-            urllib.parse.urljoin(
-                str(CONFIG.REF_SERVER_URL),
-                f"cities/{city_id}/stats?date={dt_date}",
-            )
-        ) as response:
-            data = await response.json()
-
-    df = pd.DataFrame(data)
-    if df.empty:
-        logging.warning(f"No data found for {city}:{requested_date}")
-        return
-
-    df["delay"] = df["delay"].apply(iso_duration_to_seconds)
-
-    buffer = BytesIO()
-    df.to_parquet(buffer, index=False)
-    buffer.seek(0)
-
-    file = f"{country}/{requested_date}/{city}/data.parquet"
-
-    if CONFIG.DEBUG:
-        path = CONFIG.DEBUG_S3_LOCAL_PATH / file
-        path.parent.mkdir(parents=True, exist_ok=True)
-        logging.info(f"Saving data to {path}")
-        with open(path, "wb") as f:
-            f.write(buffer.getvalue())
-    else:
-        app.state.s3_client.put_object(
-            Bucket=CONFIG.S3_BUCKET, Key=file, Body=buffer.getvalue()
-        )
-
-    logging.info(f"Processed and saved data for {city}:{requested_date}")
-
-
-def get_country_stats(country: str, requested_date: date) -> dict[str, Any]:
-    """
-    List the data stored in S3 for given date create statistics for given country
-    and date
-    """
-
-    if CONFIG.DEBUG:
-        base_path = CONFIG.DEBUG_S3_LOCAL_PATH / country / str(requested_date)
-        files = list(base_path.rglob("*/*.parquet"))
-    else:
-        contents = app.state.s3_client.list_objects_v2(
-            Bucket=CONFIG.S3_BUCKET, Prefix=f"{country}/{date}"
-        ).response.get("Contents", [])
-        files = [obj["Key"] for obj in contents]
-
-    if not files:
-        return {}
-
-    data = []
-
-    for city_file in files:
-        if CONFIG.DEBUG:
-            df = pd.read_parquet(city_file)
-        else:
-            response = app.state.s3_client.get_object(
-                Bucket=CONFIG.S3_BUCKET, Key=city_file
-            )
-            buffer = BytesIO(response["Body"].read())
-            df = pd.read_parquet(buffer)
-
-        data.append(df)
-
-    country_wide_data = pd.concat(data)
-
-    logging.info(f"Processing data for {country}:{requested_date}")
-
-    return {
-        "number_of_buses": int(country_wide_data["bus-type"].nunique()),
-        "total_passengers": int(country_wide_data["passengers"].sum()),
-        "total_accidents": int(country_wide_data["accident"].sum()),
-        "average_delay": float(country_wide_data["delay"].mean()),
-    }
-
+from bus_server.config import CONFIG
+from bus_server.data_processing import (get_country_stats_local,
+                                        get_country_stats_s3,
+                                        process_data_task_local,
+                                        process_data_task_s3)
 
 ### API endpoints
 
@@ -156,12 +35,18 @@ async def process_request(
         ) as response:
             cities = await response.json()
 
+    processing_function = (
+        partial(process_data_task_local, local_path=CONFIG.LOCAL_STORAGE_PATH)
+        if CONFIG.RUN_LOCALLY else 
+        partial(process_data_task_s3, client=app.state.s3_client)
+    )
+
     return Response(
         {"Processing": requested_date},
         background=BackgroundTasks(
             [
                 BackgroundTask(
-                    process_data_task,
+                    processing_function,
                     requested_date,
                     city["id"],
                     city["name"],
@@ -200,16 +85,21 @@ class CountryStats(pydantic.RootModel):
 async def country_stats(
     from_date: date = Parameter(query="from"),
     to_date: date = Parameter(query="to"),
-) -> dict[str, dict[str, Any]]:
+    # ) -> dict[str, dict[str, Any]]:
+) -> CountryStats:
     # FIXME: This should be `CountryStats` instead of `dict[str, dict[str, Any]]`
     # but swagger raises an error
     """
     List the data stored in S3 for given date create statistics for each country
     """
 
-    if CONFIG.DEBUG:
-        countries = [d.name for d in CONFIG.DEBUG_S3_LOCAL_PATH.iterdir() if d.is_dir()]
+    if CONFIG.RUN_LOCALLY:
+        processing_function = partial(
+            get_country_stats_local, local_path=CONFIG.LOCAL_STORAGE_PATH
+        )
+        countries = [d.name for d in CONFIG.LOCAL_STORAGE_PATH.iterdir() if d.is_dir()]
     else:
+        processing_function = partial(get_country_stats_s3, client=app.state.s3_client)
         response = app.state.s3_client.list_objects_v2(
             Bucket=CONFIG.S3_BUCKET, Delimiter="/"
         )
@@ -223,7 +113,8 @@ async def country_stats(
         from_date + timedelta(days=n) for n in range((to_date - from_date).days + 1)
     ):
         for country in countries:
-            country_stats = get_country_stats(country, requested_date)
+            country_stats = processing_function(country, requested_date)
+
             try:
                 response[country][str(requested_date)] = country_stats
             except KeyError:
@@ -234,10 +125,17 @@ async def country_stats(
 
 
 app = Litestar([process_request, country_stats])
-app.state.s3_client = s3_client
 
 if __name__ == "__main__":
+
+
     import uvicorn
 
     logging.info(f"Starting the reference server {CONFIG}")
+
+    if not CONFIG.RUN_LOCALLY:
+        # Initialize S3 client
+        s3_client: S3Client = boto3.client("s3", region_name="us-east-1")
+        app.state.s3_client = s3_client
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

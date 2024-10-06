@@ -12,3 +12,4 @@ mypy
 types-requests
 pandas-stubs
 boto3-stubs
+mypy-boto3-s3
